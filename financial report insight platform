@@ -1,0 +1,96 @@
+import openai
+import fitz  # PyMuPDF
+import gradio as gr
+
+# OpenAI API 設定
+openai.api_key = "YOUR_OPENAI_API_KEY"
+
+# 定義函數：從 PDF 文件中提取文本
+def extract_text_from_pdf(pdf_path):
+    text = ""
+    with fitz.open(pdf_path) as pdf:
+        for page in pdf:
+            text += page.get_text()
+    return text
+
+# 定義函數：生成摘要
+def summarize_text(text):
+    prompt = f"""
+    根據以下財報記錄，生成一個簡短摘要，涵蓋營運亮點、挑戰及未來展望。
+
+    財報記錄: {text}
+    """
+    response = openai.Completion.create(
+        engine="gpt-4-turbo",
+        prompt=prompt,
+        max_tokens=300
+    )
+    return response['choices'][0]['text']
+
+# 定義函數：進行情緒分析
+def analyze_sentiment(text):
+    prompt = f"""
+    根據以下財報摘要，分析管理層的情緒（正面、中立、負面），並解釋其背後原因。
+
+    財報摘要: {text}
+    """
+    response = openai.Completion.create(
+        engine="gpt-4-turbo",
+        prompt=prompt,
+        max_tokens=150
+    )
+    return response['choices'][0]['text']
+
+# 定義函數：綜合報告生成
+def generate_comprehensive_report(summaries, sentiments):
+    prompt = f"""
+    根據以下多份財報摘要和情緒分析，生成一份綜合報告，概述公司的策略變化、挑戰趨勢及未來展望，並對管理層情緒變化進行總結。
+
+    財報摘要:
+    {" ".join(summaries)}
+
+    情緒分析:
+    {" ".join(sentiments)}
+    """
+    response = openai.Completion.create(
+        engine="gpt-4-turbo",
+        prompt=prompt,
+        max_tokens=500
+    )
+    return response['choices'][0]['text']
+
+# 主函數：處理多個 PDF，生成摘要、情緒分析及綜合報告
+def process_pdfs(pdf_files):
+    summaries = []
+    sentiments = []
+
+    # 逐一處理每份 PDF 文件
+    for pdf_file in pdf_files:
+        # 提取 PDF 文本
+        text = extract_text_from_pdf(pdf_file.name)
+        # 生成摘要
+        summary = summarize_text(text)
+        summaries.append(summary)
+        # 進行情緒分析
+        sentiment = analyze_sentiment(summary)
+        sentiments.append(sentiment)
+
+    # 生成綜合報告
+    comprehensive_report = generate_comprehensive_report(summaries, sentiments)
+    return "\n\n".join(summaries), "\n\n".join(sentiments), comprehensive_report
+
+# 使用 Gradio 建立網頁介面
+iface = gr.Interface(
+    fn=process_pdfs,  # 主處理函數
+    inputs=gr.inputs.File(file_count="multiple", file_types=['.pdf']),  # 上傳多個 PDF
+    outputs=[
+        gr.outputs.Textbox(label="各份財報摘要"),
+        gr.outputs.Textbox(label="各份情緒分析"),
+        gr.outputs.Textbox(label="綜合報告")
+    ],
+    title="財報電話會議記錄分析與綜合報告生成",
+    description="上傳多個 PDF 財報文件，自動生成每份摘要、情緒分析，並綜合成一份報告。"
+)
+
+# 啟動應用程式
+iface.launch()
